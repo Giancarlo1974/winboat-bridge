@@ -74,6 +74,32 @@ ln -s $(pwd)/target/release/winboat-bridge ~/.local/bin/winboat-bridge
 - Non devi ricopiare il file dopo ogni modifica
 - Ideale per ciclo di sviluppo rapido
 
+### 3.1. Port Mapping Docker Compose
+
+Il progetto WinBoat usa Docker Compose con mappature delle porte specifiche. Assicurati che il tuo `docker-compose.yml` contenga le porte necessarie per winboat-bridge:
+
+```yaml
+services:
+  windows:
+    # ... altre configurazioni
+    ports:
+      - 127.0.0.1:47320:5985    # WinRM (per bootstrap)
+      - 127.0.0.1:47330:5330    # winboat-bridge server (container port 5330 → host port 47330)
+      # ... altre porte
+```
+
+**Spiegazione delle porte importanti:**
+- **5330** (container): Porta su cui ascolta il server winboat-bridge dentro Windows
+- **47330** (host): Porta su cui il client Linux si connette (mappata a 5330 nel container)
+- **5985** (container): WinRM per il bootstrap automatico del server
+- **47320** (host): Porta WinRM su host per il bootstrap
+
+Queste porte devono essere configurate correttamente nel tuo `.env`:
+```bash
+WINBOAT_CLIENT_PORT=47330  # Porta host a cui si connette il client
+WINBOAT_SERVER_PORT=5330   # Porta su cui ascolta il server nel container
+```
+
 Una volta fatto questo, puoi testare se funziona digitando:
 
 ```bash
