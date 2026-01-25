@@ -6,6 +6,7 @@ use tokio::process::Command;
 use std::process::Stdio;
 use std::sync::Arc;
 use tokio::sync::Notify;
+use std::env;
 
 #[cfg(target_os = "windows")]
 mod win_job {
@@ -67,17 +68,30 @@ mod win_job {
 
 #[derive(Parser)]
 #[command(name = "winboat-bridge")]
-#[command(about = "Bridge to execute commands on WinBoat container via TCP", long_about = None)]
+#[command(about = "Bridge to execute commands on WinBoat container via TCP")]
+#[command(long_about = "WinBoat Bridge - Remote Command Executor for Windows Containers\n\n\
+    This tool allows you to execute commands on a Windows container from Linux.\n\
+    It operates in two modes: Server (runs on Windows) and Client (runs on Linux).\n\n\
+    Configuration via Environment Variables:\n\
+      WINBOAT_EXE_PATH      - Path to winboat-bridge.exe on Windows\n\
+      WINBOAT_HOST          - WinRM host (default: 127.0.0.1)\n\
+      WINBOAT_PORT          - WinRM port (default: 47320)\n\
+      WINBOAT_USER          - WinRM username\n\
+      WINBOAT_PASS          - WinRM password\n\
+      WINBOAT_LOG_PATH      - Server log output path (default: C:\\\\Users\\\\gianca\\\\server.log)\n\
+      WINBOAT_ERR_PATH      - Server error output path (default: C:\\\\Users\\\\gianca\\\\server.err)\n\
+      WINBOAT_SERVER_PORT   - Server listening port (default: 5330)\n\
+      WINBOAT_CLIENT_PORT   - Client connection port (default: 47330)")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 
-    /// Run as server
-    #[arg(long)]
+    /// Run as server (listens for incoming commands)
+    #[arg(long, help = "Run in server mode - listens for incoming command requests")]
     server: bool,
 
-    /// Command to execute (Client mode)
-    #[arg(short, long)]
+    /// Command to execute on remote server (Client mode)
+    #[arg(short, long, help = "Execute a command on the remote Windows server", value_name = "COMMAND")]
     cmd: Option<String>,
 }
 
@@ -85,13 +99,15 @@ struct Cli {
 enum Commands {
     /// Start the server (explicit subcommand)
     Server {
-        #[arg(short, long, default_value = "5330")]
+        /// Port to listen on (can also be set via WINBOAT_SERVER_PORT env var)
+        #[arg(short, long, default_value = "5330", help = "TCP port for server to listen on")]
         port: u16,
     },
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    dotenvy::dotenv().ok();
     let cli = Cli::parse();
 
     if cli.server || matches!(cli.command, Some(Commands::Server { .. })) {
@@ -122,6 +138,9 @@ async fn main() -> Result<()> {
         println!("");
         println!("  4. Close remote server:");
         println!("     winboat-bridge -c \"quit\"");
+        println!("-------------------------------------");
+        println!("For detailed help on all parameters, run:");
+        println!("  winboat-bridge -h");
     }
 
     Ok(())
@@ -134,7 +153,12 @@ async fn server_mode(port: u16) -> Result<()> {
         let _ = Command::new("cmd").args(&["/C", "chcp 65001"]).output().await;
     }
 
-    let addr = format!("0.0.0.0:{}", port);
+    let actual_port = env::var("WINBOAT_SERVER_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(port);
+    
+    let addr = format!("0.0.0.0:{}", actual_port);
     let listener = TcpListener::bind(&addr).await?;
     println!("Server listening on {}", addr);
 
@@ -316,7 +340,9 @@ async fn handle_connection(mut socket: TcpStream, shutdown_signal: Arc<Notify>) 
 
 async fn client_mode(cmd: &str) -> Result<()> {
     // Port mapped on host: 47330 -> Container: 5330
-    let addr = "127.0.0.1:47330"; 
+    let client_port = env::var("WINBOAT_CLIENT_PORT")
+        .unwrap_or_else(|_| "47330".to_string());
+    let addr = format!("127.0.0.1:{}", client_port); 
     
     // Attempt connection loop (Connect -> Handshake -> if fail -> Bootstrap -> Retry)
     let mut attempt = 0;
@@ -385,22 +411,33 @@ async fn client_mode(cmd: &str) -> Result<()> {
 }
 
 async fn bootstrap_server() -> Result<()> {
-    let exe_path = r"C:\Users\gianca\Desktop\Shared\rust\winboat-bridge\target\x86_64-pc-windows-gnu\release\winboat-bridge.exe";
+    let exe_path = env::var("WINBOAT_EXE_PATH")
+        .unwrap_or_else(|_| r"C:\Users\gianca\Desktop\Shared\rust\winboat-bridge\target\x86_64-pc-windows-gnu\release\winboat-bridge.exe".to_string());
+    
+    let log_path = env::var("WINBOAT_LOG_PATH")
+        .unwrap_or_else(|_| r"C:\Users\gianca\server.log".to_string());
+    
+    let err_path = env::var("WINBOAT_ERR_PATH")
+        .unwrap_or_else(|_| r"C:\Users\gianca\server.err".to_string());
     
     // Use PowerShell Start-Process to spawn the process in a detached state.
     // -WindowStyle Hidden: Hides the window
     // -PassThru: Returns the process object (useful for debugging, though we ignore it here)
     // We direct output to files for debugging since we can't see it easily in detached mode.
     let ps_command = format!(
-        "Start-Process -FilePath '{}' -ArgumentList '--server' -WindowStyle Hidden -RedirectStandardOutput 'C:\\Users\\gianca\\server.log' -RedirectStandardError 'C:\\Users\\gianca\\server.err'",
-        exe_path
+        "Start-Process -FilePath '{}' -ArgumentList '--server' -WindowStyle Hidden -RedirectStandardOutput '{}' -RedirectStandardError '{}'",
+        exe_path, log_path, err_path
     );
     
     // Direct evil-winrm invocation details
-    let host = "127.0.0.1";
-    let port = "47320";
-    let user = "gianca";
-    let pass = "gianca";
+    let host = env::var("WINBOAT_HOST")
+        .unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port = env::var("WINBOAT_PORT")
+        .unwrap_or_else(|_| "47320".to_string());
+    let user = env::var("WINBOAT_USER")
+        .unwrap_or_else(|_| "gianca".to_string());
+    let pass = env::var("WINBOAT_PASS")
+        .unwrap_or_else(|_| "gianca".to_string());
 
     println!("Bootstrapping server via evil-winrm...");
     println!("PowerShell Command: {}", ps_command);
