@@ -57,13 +57,22 @@ Una volta compilato, i file si trovano in percorsi precisi. È importante usare 
 
 Per poter digitare semplicemente `winboat-bridge` da qualsiasi cartella senza dover specificare tutto il percorso, devi installarlo nel tuo sistema.
 
-Il metodo più semplice è copiare l'eseguibile nella tua cartella binari locale:
+**Metodo consigliato per sviluppo**: usa un link simbolico invece di copiare il file. In questo modo ogni ricompilazione sarà immediatamente disponibile:
 
 ```bash
-cp target/release/winboat-bridge ~/.local/bin/
+# Rimuovi eventuale copia precedente
+rm -f ~/.local/bin/winboat-bridge
+
+# Crea il link simbolico
+ln -s $(pwd)/target/release/winboat-bridge ~/.local/bin/winboat-bridge
 ```
 
 *Nota: Assicurati che `~/.local/bin` sia nel tuo PATH (di solito lo è su Linux moderno).*
+
+**Vantaggi del link simbolico:**
+- Ogni `cargo build --release aggiorna immediatamente l'eseguibile globale
+- Non devi ricopiare il file dopo ogni modifica
+- Ideale per ciclo di sviluppo rapido
 
 Una volta fatto questo, puoi testare se funziona digitando:
 

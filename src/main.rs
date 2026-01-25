@@ -7,6 +7,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use tokio::sync::Notify;
 use std::env;
+use std::io::ErrorKind;
 
 #[cfg(target_os = "windows")]
 mod win_job {
@@ -159,7 +160,39 @@ async fn server_mode(port: u16) -> Result<()> {
         .unwrap_or(port);
     
     let addr = format!("0.0.0.0:{}", actual_port);
-    let listener = TcpListener::bind(&addr).await?;
+
+    // Bind with Windows-friendly recovery on AddrInUse (os error 10048)
+    let listener = match TcpListener::bind(&addr).await {
+        Ok(l) => l,
+        Err(e) if e.kind() == ErrorKind::AddrInUse => {
+            #[cfg(target_os = "windows")]
+            {
+                eprintln!("Port {} already in use. Attempting to terminate existing listener and retry...", actual_port);
+                kill_listener_on_port_windows(actual_port).await?;
+                
+                // Wait a bit more for socket to be fully released
+                println!("Waiting additional 1 second for socket release...");
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                
+                match TcpListener::bind(&addr).await {
+                    Ok(l) => l,
+                    Err(e2) if e2.kind() == ErrorKind::AddrInUse => {
+                        return Err(anyhow::anyhow!(
+                            "Port {} is still in use after kill attempt. Please close the existing process and retry. Underlying error: {}",
+                            actual_port,
+                            e2
+                        ));
+                    }
+                    Err(e2) => return Err(e2.into()),
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                return Err(e.into());
+            }
+        }
+        Err(e) => return Err(e.into()),
+    };
     println!("Server listening on {}", addr);
 
     // Persistent Server Mode
@@ -197,6 +230,69 @@ async fn server_mode(port: u16) -> Result<()> {
     }
 
     println!("Server shutting down.");
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+async fn kill_listener_on_port_windows(port: u16) -> Result<()> {
+    // Find PID(s) listening on a port and terminate them.
+    // netstat output example:
+    // TCP    0.0.0.0:5330   0.0.0.0:0   LISTENING   12345
+    let find_cmd = format!(
+        "netstat -a -n -o | findstr LISTENING | findstr :{}",
+        port
+    );
+
+    let out = Command::new("cmd")
+        .args(["/C", &find_cmd])
+        .output()
+        .await
+        .context("Failed to run netstat to locate PID")?;
+
+    // If nothing found, maybe the port was released in the meantime.
+    if out.stdout.is_empty() {
+        println!("[kill_listener] netstat returned no LISTENING lines for port {}", port);
+        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+        return Ok(());
+    }
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    println!("[kill_listener] netstat raw output:\n{}", stdout);
+    let mut pids: Vec<u32> = stdout
+        .lines()
+        .filter_map(|line| line.split_whitespace().last())
+        .filter_map(|pid| pid.parse::<u32>().ok())
+        .collect();
+    pids.sort_unstable();
+    pids.dedup();
+
+    if pids.is_empty() {
+        println!("[kill_listener] No PIDs parsed from netstat output for port {}", port);
+        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+        return Ok(());
+    }
+
+    println!("[kill_listener] PIDs to kill: {:?}", pids);
+    for pid in pids {
+        let kill = Command::new("taskkill")
+            .args(["/F", "/PID", &pid.to_string()])
+            .output()
+            .await
+            .with_context(|| format!("Failed to run taskkill for PID {}", pid))?;
+
+        if !kill.status.success() {
+            let stderr = String::from_utf8_lossy(&kill.stderr);
+            // If it already exited between netstat and taskkill, treat as non-fatal.
+            eprintln!("[kill_listener] Warning: taskkill failed for PID {}: {}", pid, stderr.trim());
+        } else {
+            let stdout_kill = String::from_utf8_lossy(&kill.stdout);
+            println!("[kill_listener] taskkill success for PID {}: {}", pid, stdout_kill.trim());
+        }
+    }
+
+    // Give Windows a moment to release the socket
+    println!("[kill_listener] Sleeping 800ms for socket release...");
+    tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
     Ok(())
 }
 
@@ -354,7 +450,7 @@ async fn client_mode(cmd: &str) -> Result<()> {
         
         let connect_result = tokio::time::timeout(
             tokio::time::Duration::from_secs(2),
-            TcpStream::connect(addr)
+            TcpStream::connect(addr.as_str())
         ).await;
 
         let mut s = match connect_result {
@@ -412,7 +508,7 @@ async fn client_mode(cmd: &str) -> Result<()> {
 
 async fn bootstrap_server() -> Result<()> {
     let exe_path = env::var("WINBOAT_EXE_PATH")
-        .unwrap_or_else(|_| r"C:\Users\gianca\Desktop\Shared\rust\winboat-bridge\target\x86_64-pc-windows-gnu\release\winboat-bridge.exe".to_string());
+        .unwrap_or_else(|_| r"C:\Users\gianca\Desktop\Shared\rust\winboat-bridge\target\release\winboat-bridge.exe".to_string());
     
     let log_path = env::var("WINBOAT_LOG_PATH")
         .unwrap_or_else(|_| r"C:\Users\gianca\server.log".to_string());
