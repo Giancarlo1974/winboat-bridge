@@ -8,9 +8,6 @@ use std::sync::Arc;
 use tokio::sync::Notify;
 
 #[cfg(target_os = "windows")]
-use std::os::windows::io::AsRawHandle;
-
-#[cfg(target_os = "windows")]
 mod win_job {
     use winapi::um::jobapi2::{CreateJobObjectW, AssignProcessToJobObject, SetInformationJobObject};
     use winapi::um::winnt::{JobObjectExtendedLimitInformation, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, HANDLE};
