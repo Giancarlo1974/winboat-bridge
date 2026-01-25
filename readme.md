@@ -30,14 +30,16 @@ Quando compili il progetto su Linux, l'eseguibile per Windows viene creato diret
 
 ### 1. Compilazione (Cross-Compiling)
 
-Prima di tutto, devi creare l'eseguibile per Windows lavorando da Linux. Esegui questo comando nella cartella del progetto:
+Prima di tutto, devi creare l'eseguibile per Windows lavorando da Linux.
+Poiché siamo su **NixOS**, la compilazione incrociata richiede librerie specifiche. Abbiamo creato uno script apposito per facilitare il compito.
+
+Esegui questo comando nella cartella del progetto:
 
 ```bash
-# Compila la versione ottimizzata per Windows
-cargo build --target x86_64-pc-windows-gnu --release
+./build_windows.sh
 ```
 
-*Questo comando crea `winboat-bridge.exe` nella cartella condivisa.*
+*Questo script imposta i flag corretti per il linker e crea `winboat-bridge.exe` nella cartella condivisa.*
 
 ### 2. Dove sono gli eseguibili?
 
