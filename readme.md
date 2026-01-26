@@ -1,136 +1,136 @@
 # WinBoat Bridge
 
-WinBoat Bridge è un tool di orchestrazione che permette a un sistema Linux di eseguire comandi all'interno di un ambiente Windows virtualizzato (WinBoat) in modo trasparente.
-A differenza di soluzioni standard come SSH o WinRM (usati solo per il bootstrap), WinBoat Bridge offre un canale diretto e veloce, ideale per pipeline di Continuous Integration (CI) e automazione di test.
+WinBoat Bridge is an orchestration tool that allows a Linux system to run commands inside a virtualized Windows environment (WinBoat) transparently.
+Unlike standard solutions like SSH or WinRM (used only for bootstrap), WinBoat Bridge provides a direct and fast channel, ideal for Continuous Integration (CI) pipelines and test automation.
 
-## 1. Configurazione (File .env)
+## 1. Configuration (.env File)
 
-Il progetto utilizza un file .env per gestire i percorsi e le credenziali.
-Copia il file di esempio e personalizzalo prima di iniziare:
+The project uses a .env file to manage paths and credentials.
+Copy the example file and customize it before you start:
 
 ```bash
 cp .env.example .env
 ```
 
-**⚠️ IMPORTANTE - Sintassi del file .env:**
-- Usare **doppi backslash** (`\\`) per i percorsi Windows
-- **NON usare virgolette** per i valori
+**⚠️ IMPORTANT - .env File Syntax:**
+- Use **double backslashes** (`\\`) for Windows paths
+- **DO NOT use quotes** for values
 
-Esempio corretto:
+Correct example:
 ```bash
 WINBOAT_EXE_PATH=C:\\Users\\gianca\\Desktop\\Shared\\progetti\\rust\\winboat-bridge\\target\\release\\winboat-bridge.exe
 WINBOAT_LOG_PATH=C:\\Users\\gianca\\server.log
 ```
 
-Parametri principali:
-- **WINBOAT_EXE_PATH**: Percorso assoluto (lato Windows) dove risiede il server
-- **WINBOAT_HOST / PORT**: Indirizzo e porta per il bootstrap (WinRM)
-- **WINBOAT_CLIENT_PORT**: Porta sul sistema Linux (Host) mappata verso il container
-- **WINBOAT_SERVER_PORT**: Porta interna al container Windows su cui ascolta il server
+Main parameters:
+- **WINBOAT_EXE_PATH**: Absolute path (on Windows side) where the server is located
+- **WINBOAT_HOST / PORT**: Address and port for bootstrap (WinRM)
+- **WINBOAT_CLIENT_PORT**: Port on the Linux system (Host) mapped to the container
+- **WINBOAT_SERVER_PORT**: Internal port of the Windows container that the server listens on
 
-Il file `.env` viene cercato automaticamente in:
-1. Directory corrente di lavoro
-2. Directory dell'eseguibile
-3. Root del progetto (se eseguibile in `target/release`)
+The .env file is automatically searched in:
+1. Current working directory
+2. Executable directory
+3. Project root (if executable in `target/release`)
 
-## 2. Compilazione
+## 2. Compilation
 
-Il progetto genera un unico binario. Deve essere compilato per Windows (Server) e per Linux (Client).
+The project generates a single binary. It must be compiled for Windows (Server) and Linux (Client).
 
-### A. Build per Windows (Server)
+### A. Build for Windows (Server)
 
-Hai due strade, a seconda di dove ti trovi:
+You have two options, depending on where you are:
 
-#### Opzione 1: Cross-compilazione da Linux (Consigliato per CI/CD)
+#### Option 1: Cross-compilation from Linux (Recommended for CI/CD)
 
-Se stai lavorando su NixOS o Linux, usa lo script dedicato:
+If you're working on NixOS or Linux, use the dedicated script:
 
 ```bash
 ./build_windows.sh
 ```
 
-#### Opzione 2: Compilazione nativa su Windows
+#### Option 2: Native compilation on Windows
 
-Se hai accesso diretto al sistema Windows con Rust installato:
-1. Apri una PowerShell nella root del progetto.
-2. Esegui: `cargo build --release`
-3. Troverai il file in `target\release\winboat-bridge.exe`.
+If you have direct access to a Windows system with Rust installed:
+1. Open a PowerShell in the project root.
+2. Run: `cargo build --release`
+3. You'll find the file in `target\release\winboat-bridge.exe`.
 
-Assicurati che il file sia nella cartella condivisa e che il percorso in .env (WINBOAT_EXE_PATH) punti correttamente a questo binario.
+Make sure the file is in the shared folder and that the path in .env (WINBOAT_EXE_PATH) points correctly to this binary.
 
-### B. Build per Linux (Client)
+### B. Build for Linux (Client)
 
-Sulla tua macchina Linux, compila normalmente:
+On your Linux machine, compile normally:
 
 ```bash
 cargo build --release
 ```
 
-## 3. Installazione Globale (Linux)
+## 3. Global Installation (Linux)
 
-Per eseguire winboat-bridge da qualsiasi cartella, crea un link simbolico nella directory dei binari utente. Seguendo lo standard XDG, la directory corretta è ~/.local/bin.
+To run winboat-bridge from any folder, create a symbolic link in the user binaries directory. Following the XDG standard, the correct directory is ~/.local/bin.
 
 ```bash
-# Crea la directory se non esiste
+# Create the directory if it doesn't exist
 mkdir -p ~/.local/bin
 
-# Crea un link simbolico verso il binario appena compilato
+# Create a symbolic link to the newly compiled binary
 ln -sf "$(pwd)/target/release/winboat-bridge" ~/.local/bin/winboat-bridge
 ```
 
-Nota: Assicurati che ~/.local/bin sia nel tuo $PATH (controlla ~/.bashrc o ~/.zshrc).
+Note: Make sure ~/.local/bin is in your $PATH (check ~/.bashrc or ~/.zshrc).
 
-## 4. Integrazione Docker Compose
+## 4. Docker Compose Integration
 
-Configura il port mapping nel tuo docker-compose.yml per esporre i servizi necessari:
+Configure port mapping in your docker-compose.yml to expose the necessary services:
 
 ```yaml
 services:
   windows:
     ports:
-      - "127.0.0.1:47320:5985"  # WinRM (Per il bootstrap automatico)
-      - "127.0.0.1:47330:5330"  # WinBoat Bridge (Comunicazione Client-Server)
+      - "127.0.0.1:47320:5985"  # WinRM (For automatic bootstrap)
+      - "127.0.0.1:47330:5330"  # WinBoat Bridge (Client-Server communication)
 ```
 
-## 5. Esempi di Utilizzo
+## 5. Usage Examples
 
-Una volta configurato il file .env, il client Linux gestirà tutto automaticamente (incluso l'avvio del server su Windows se spento).
+Once the .env file is configured, the Linux client will handle everything automatically (including starting the Windows server if it's off).
 
-Verifica connessione:
+Verify connection:
 
 ```bash
 winboat-bridge -c "ipconfig"
 ```
 
-Esecuzione script PowerShell:
+Run PowerShell script:
 
 ```bash
 winboat-bridge -c "powershell -File C:\Scripts\Setup-Test.ps1"
 ```
 
-## Risoluzione dei Problemi
+## Troubleshooting
 
-| Problema              | Causa Possibile          | Soluzione |
+| Problem              | Possible Cause          | Solution |
 |-----------------------|--------------------------|-----------|
-| Il comando "appende" | Connessione zombie       | Ctrl+C e riavvia; il client forzerà un nuovo bootstrap. |
-| Connection Refused    | Porta mappata errata     | Verifica con `docker ps` che la porta 47330 sia aperta. |
-| "WINBOAT_EXE_PATH must be set" | File .env non trovato o sintassi errata | Verifica che il file `.env` esista e usi doppi backslash (`\\`) senza virgolette. Esegui con `--help` per vedere il messaggio `[DEBUG] Loaded .env from: ...` |
-| Errore parsing .env   | Sintassi errata          | Usa doppi backslash (`\\`) per i percorsi Windows e NON usare virgolette. |
+| The command "hangs" | Zombie connection       | Ctrl+C and restart; the client will force a new bootstrap. |
+| Connection Refused    | Wrong port mapping     | Check with `docker ps` that port 47330 is open. |
+| "WINBOAT_EXE_PATH must be set" | .env file not found or wrong syntax | Verify that the .env file exists and uses double backslashes (`\\`) without quotes. Run with `--help` to see the message `[DEBUG] Loaded .env from: ...` |
+| .env parsing error   | Wrong syntax          | Use double backslashes (`\\`) for Windows paths and DO NOT use quotes. |
 
-### Debug del caricamento .env
+### .env Loading Debug
 
-Per verificare che il file `.env` venga caricato correttamente, esegui:
+To verify that the .env file is loaded correctly, run:
 
 ```bash
 ./target/release/winboat-bridge --help 2>&1 | grep DEBUG
 ```
 
-Dovresti vedere:
+You should see:
 ```
 [DEBUG] Loaded .env from: /path/to/.env
 ```
 
-Se vedi `[WARNING] No .env file found`, controlla che:
-1. Il file `.env` esista nella directory corrente, nella directory dell'eseguibile, o nella root del progetto
-2. La sintassi sia corretta (doppi backslash, no virgolette)
-3. Il file abbia i permessi di lettura corretti
+If you see `[WARNING] No .env file found`, check that:
+1. The .env file exists in the current directory, executable directory, or project root
+2. The syntax is correct (double backslashes, no quotes)
+3. The file has correct read permissions
