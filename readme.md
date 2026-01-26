@@ -5,7 +5,7 @@ A differenza di soluzioni standard come SSH o WinRM (usati solo per il bootstrap
 
 ## 1. Configurazione (File .env)
 
-Il progetto utilizza un file .env per gestire i percorsi e le credenziali. Questo evita di dover ricompilare il codice se cambiano i path o le password.
+Il progetto utilizza un file .env per gestire i percorsi e le credenziali.
 Copia il file di esempio e personalizzalo prima di iniziare:
 
 ```bash
