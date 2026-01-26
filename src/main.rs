@@ -108,7 +108,84 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    dotenvy::dotenv().ok();
+    // Try loading .env from multiple locations
+    let mut env_loaded = false;
+    let mut tried_paths = Vec::new();
+    
+    // 1. Try current working directory
+    let cwd_env = std::env::current_dir().ok().map(|p| p.join(".env"));
+    if let Some(ref path) = cwd_env {
+        tried_paths.push(path.display().to_string());
+        if path.exists() {
+            match dotenvy::from_path(path) {
+                Ok(_) => {
+                    eprintln!("[DEBUG] Loaded .env from: {}", path.display());
+                    env_loaded = true;
+                }
+                Err(e) => {
+                    eprintln!("[DEBUG] Failed to load .env from {}: {}", path.display(), e);
+                }
+            }
+        }
+    }
+    
+    // 2. Try executable directory
+    if !env_loaded {
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let env_path = exe_dir.join(".env");
+                tried_paths.push(env_path.display().to_string());
+                if env_path.exists() {
+                    match dotenvy::from_path(&env_path) {
+                        Ok(_) => {
+                            eprintln!("[DEBUG] Loaded .env from: {}", env_path.display());
+                            env_loaded = true;
+                        }
+                        Err(e) => {
+                            eprintln!("[DEBUG] Failed to load .env from {}: {}", env_path.display(), e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // 3. Try project root (parent of target/release or target/debug)
+    if !env_loaded {
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                // If we're in target/release or target/debug, go up two levels
+                if exe_dir.ends_with("release") || exe_dir.ends_with("debug") {
+                    if let Some(target_dir) = exe_dir.parent() {
+                        if let Some(project_root) = target_dir.parent() {
+                            let env_path = project_root.join(".env");
+                            tried_paths.push(env_path.display().to_string());
+                            if env_path.exists() {
+                                match dotenvy::from_path(&env_path) {
+                                    Ok(_) => {
+                                        eprintln!("[DEBUG] Loaded .env from: {}", env_path.display());
+                                        env_loaded = true;
+                                    }
+                                    Err(e) => {
+                                        eprintln!("[DEBUG] Failed to load .env from {}: {}", env_path.display(), e);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    if !env_loaded {
+        eprintln!("[WARNING] No .env file found in any of these locations:");
+        for path in tried_paths {
+            eprintln!("  - {}", path);
+        }
+        eprintln!("Using defaults or system environment variables.");
+    }
+    
     let cli = Cli::parse();
 
     if cli.server || matches!(cli.command, Some(Commands::Server { .. })) {
@@ -508,7 +585,7 @@ async fn client_mode(cmd: &str) -> Result<()> {
 
 async fn bootstrap_server() -> Result<()> {
     let exe_path = env::var("WINBOAT_EXE_PATH")
-        .unwrap_or_else(|_| r"C:\Users\gianca\Desktop\Shared\rust\winboat-bridge\target\release\winboat-bridge.exe".to_string());
+        .context("WINBOAT_EXE_PATH must be set in the .env file")?;
     
     let log_path = env::var("WINBOAT_LOG_PATH")
         .unwrap_or_else(|_| r"C:\Users\gianca\server.log".to_string());

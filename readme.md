@@ -1,171 +1,136 @@
 # WinBoat Bridge
 
-## Cos'è WinBoat Bridge?
+WinBoat Bridge è un tool di orchestrazione che permette a un sistema Linux di eseguire comandi all'interno di un ambiente Windows virtualizzato (WinBoat) in modo trasparente.
+A differenza di soluzioni standard come SSH o WinRM (usati solo per il bootstrap), WinBoat Bridge offre un canale diretto e veloce, ideale per pipeline di Continuous Integration (CI) e automazione di test.
 
-**WinBoat Bridge** è uno strumento progettato per permettere a un sistema **Linux** di eseguire comandi direttamente all'interno di un ambiente **Windows** virtualizzato (WinBoat), senza dover configurare complessi servizi SSH o WinRM manualmente ogni volta.
+## 1. Configurazione (File .env)
 
-Immaginalo come un "telecomando": tu digiti il comando sul tuo terminale Linux, e questo viene eseguito istantaneamente sulla macchina Windows, restituendoti il risultato come se fossi seduto davanti a quel PC.
+Il progetto utilizza un file .env per gestire i percorsi e le credenziali. Questo evita di dover ricompilare il codice se cambiano i path o le password.
+Copia il file di esempio e personalizzalo prima di iniziare:
 
-È pensato specificamente per **scenari di Continuous Integration (CI)**, dove è necessario automatizzare test o script su Windows pilotandoli da un ambiente Linux.
+```bash
+cp .env.example .env
+```
 
-## Compatibilità
+**⚠️ IMPORTANTE - Sintassi del file .env:**
+- Usare **doppi backslash** (`\\`) per i percorsi Windows
+- **NON usare virgolette** per i valori
 
-Questo software è composto da un unico eseguibile che può funzionare in due modalità:
+Esempio corretto:
+```bash
+WINBOAT_EXE_PATH=C:\\Users\\gianca\\Desktop\\Shared\\progetti\\rust\\winboat-bridge\\target\\release\\winboat-bridge.exe
+WINBOAT_LOG_PATH=C:\\Users\\gianca\\server.log
+```
 
-1.  **Client (Linux)**: Viene eseguito sulla tua macchina Linux. Invia i comandi e riceve le risposte.
-2.  **Server (Windows)**: Viene eseguito sulla macchina Windows. Riceve i comandi, li esegue e rispedisce l'output.
+Parametri principali:
+- **WINBOAT_EXE_PATH**: Percorso assoluto (lato Windows) dove risiede il server
+- **WINBOAT_HOST / PORT**: Indirizzo e porta per il bootstrap (WinRM)
+- **WINBOAT_CLIENT_PORT**: Porta sul sistema Linux (Host) mappata verso il container
+- **WINBOAT_SERVER_PORT**: Porta interna al container Windows su cui ascolta il server
 
-> **Nota Tecnica**: Il sistema è "intelligente". Se il server su Windows non è attivo, il client Linux è in grado di avviarlo automaticamente (tramite *evil-winrm*) senza che tu debba fare nulla.
+Il file `.env` viene cercato automaticamente in:
+1. Directory corrente di lavoro
+2. Directory dell'eseguibile
+3. Root del progetto (se eseguibile in `target/release`)
 
-## La Cartella Condivisa
+## 2. Compilazione
 
-Perché tutto funzioni "magicamente", Linux e Windows devono condividere una cartella specifica dove risiede l'eseguibile del server.
+Il progetto genera un unico binario. Deve essere compilato per Windows (Server) e per Linux (Client).
 
-*   **Percorso Linux**: `/home/gianca/rust/winboat-bridge` (o dove hai clonato il progetto)
-*   **Percorso Windows**: `C:\Users\gianca\Desktop\Shared\rust\winboat-bridge`
+### A. Build per Windows (Server)
 
-Quando compili il progetto su Linux, l'eseguibile per Windows viene creato direttamente in questa cartella condivisa, così la macchina Windows può vederlo ed eseguirlo immediatamente.
+Hai due strade, a seconda di dove ti trovi:
 
-## Come si Usa
+#### Opzione 1: Cross-compilazione da Linux (Consigliato per CI/CD)
 
-### 1. Compilazione (Cross-Compiling)
-
-Prima di tutto, devi creare l'eseguibile per Windows lavorando da Linux.
-Poiché siamo su **NixOS**, la compilazione incrociata richiede librerie specifiche. Abbiamo creato uno script apposito per facilitare il compito.
-
-Esegui questo comando nella cartella del progetto:
+Se stai lavorando su NixOS o Linux, usa lo script dedicato:
 
 ```bash
 ./build_windows.sh
 ```
 
-*Questo script imposta i flag corretti per il linker e crea `winboat-bridge.exe` nella cartella condivisa.*
+#### Opzione 2: Compilazione nativa su Windows
 
-### 2. Dove sono gli eseguibili?
+Se hai accesso diretto al sistema Windows con Rust installato:
+1. Apri una PowerShell nella root del progetto.
+2. Esegui: `cargo build --release`
+3. Troverai il file in `target\release\winboat-bridge.exe`.
 
-Una volta compilato, i file si trovano in percorsi precisi. È importante usare questi per gli script di produzione/CI invece di ricompilare ogni volta.
+Assicurati che il file sia nella cartella condivisa e che il percorso in .env (WINBOAT_EXE_PATH) punti correttamente a questo binario.
 
-*   **Eseguibile Windows (Server)**:
-    *   Percorso Linux: `target/x86_64-pc-windows-gnu/release/winboat-bridge.exe`
-    *   Percorso Windows: `C:\Users\gianca\Desktop\Shared\rust\winboat-bridge\target\x86_64-pc-windows-gnu\release\winboat-bridge.exe`
+### B. Build per Linux (Client)
 
-*   **Eseguibile Linux (Client)**:
-    *   Per ottenerlo esegui: `cargo build --release`
-    *   Percorso: `target/release/winboat-bridge`
-
-### 3. Installazione Globale (Eseguire da ovunque)
-
-Per poter digitare semplicemente `winboat-bridge` da qualsiasi cartella senza dover specificare tutto il percorso, devi installarlo nel tuo sistema.
-
-**Metodo consigliato per sviluppo**: usa un link simbolico invece di copiare il file. In questo modo ogni ricompilazione sarà immediatamente disponibile:
+Sulla tua macchina Linux, compila normalmente:
 
 ```bash
-# Rimuovi eventuale copia precedente
-rm -f ~/.local/bin/winboat-bridge
-
-# Crea il link simbolico
-ln -s $(pwd)/target/release/winboat-bridge ~/.local/bin/winboat-bridge
+cargo build --release
 ```
 
-*Nota: Assicurati che `~/.local/bin` sia nel tuo PATH (di solito lo è su Linux moderno).*
+## 3. Installazione Globale (Linux)
 
-**Vantaggi del link simbolico:**
-- Ogni `cargo build --release aggiorna immediatamente l'eseguibile globale
-- Non devi ricopiare il file dopo ogni modifica
-- Ideale per ciclo di sviluppo rapido
+Per eseguire winboat-bridge da qualsiasi cartella, crea un link simbolico nella directory dei binari utente. Seguendo lo standard XDG, la directory corretta è ~/.local/bin.
 
-### 3.1. Port Mapping Docker Compose
+```bash
+# Crea la directory se non esiste
+mkdir -p ~/.local/bin
 
-Il progetto WinBoat usa Docker Compose con mappature delle porte specifiche. Assicurati che il tuo `docker-compose.yml` contenga le porte necessarie per winboat-bridge:
+# Crea un link simbolico verso il binario appena compilato
+ln -sf "$(pwd)/target/release/winboat-bridge" ~/.local/bin/winboat-bridge
+```
+
+Nota: Assicurati che ~/.local/bin sia nel tuo $PATH (controlla ~/.bashrc o ~/.zshrc).
+
+## 4. Integrazione Docker Compose
+
+Configura il port mapping nel tuo docker-compose.yml per esporre i servizi necessari:
 
 ```yaml
 services:
   windows:
-    # ... altre configurazioni
     ports:
-      - 127.0.0.1:47320:5985    # WinRM (per bootstrap)
-      - 127.0.0.1:47330:5330    # winboat-bridge server (container port 5330 → host port 47330)
-      # ... altre porte
+      - "127.0.0.1:47320:5985"  # WinRM (Per il bootstrap automatico)
+      - "127.0.0.1:47330:5330"  # WinBoat Bridge (Comunicazione Client-Server)
 ```
 
-**Spiegazione delle porte importanti:**
-- **5330** (container): Porta su cui ascolta il server winboat-bridge dentro Windows
-- **47330** (host): Porta su cui il client Linux si connette (mappata a 5330 nel container)
-- **5985** (container): WinRM per il bootstrap automatico del server
-- **47320** (host): Porta WinRM su host per il bootstrap
+## 5. Esempi di Utilizzo
 
-Queste porte devono essere configurate correttamente nel tuo `.env`:
-```bash
-WINBOAT_CLIENT_PORT=47330  # Porta host a cui si connette il client
-WINBOAT_SERVER_PORT=5330   # Porta su cui ascolta il server nel container
-```
+Una volta configurato il file .env, il client Linux gestirà tutto automaticamente (incluso l'avvio del server su Windows se spento).
 
-Una volta fatto questo, puoi testare se funziona digitando:
+Verifica connessione:
 
 ```bash
-winboat-bridge
+winboat-bridge -c "ipconfig"
 ```
 
-Se tutto è corretto, vedrai un messaggio di aiuto con gli esempi di utilizzo.
-
-### 4. "Cargo Run" vs Eseguibile Diretto
-
-Negli esempi precedenti abbiamo usato `cargo run` per comodità, ma in un ambiente professionale (CI/CD) **non dovresti usarlo**.
-
-*   **Cargo Run**: Compila il programma ogni volta prima di eseguirlo. È lento e serve agli sviluppatori.
-*   **Eseguibile Diretto**: È istantaneo. È quello che devi usare nei tuoi script di automazione.
-
-**Come usare l'eseguibile diretto (Consigliato per Tecnici):**
-
-Invece di `cargo run -- -c "..."`, usa direttamente il percorso del file compilato:
+Esecuzione script PowerShell:
 
 ```bash
-# Esempio Professionale
-./target/release/winboat-bridge -c "dir"
+winboat-bridge -c "powershell -File C:\Scripts\Setup-Test.ps1"
 ```
 
-### 4. Esecuzione Comandi (Esempi Pratici)
+## Risoluzione dei Problemi
 
-Ecco come usare il bridge. Useremo la sintassi con l'eseguibile diretto per simulare uno scenario reale.
+| Problema              | Causa Possibile          | Soluzione |
+|-----------------------|--------------------------|-----------|
+| Il comando "appende" | Connessione zombie       | Ctrl+C e riavvia; il client forzerà un nuovo bootstrap. |
+| Connection Refused    | Porta mappata errata     | Verifica con `docker ps` che la porta 47330 sia aperta. |
+| "WINBOAT_EXE_PATH must be set" | File .env non trovato o sintassi errata | Verifica che il file `.env` esista e usi doppi backslash (`\\`) senza virgolette. Esegui con `--help` per vedere il messaggio `[DEBUG] Loaded .env from: ...` |
+| Errore parsing .env   | Sintassi errata          | Usa doppi backslash (`\\`) per i percorsi Windows e NON usare virgolette. |
 
-#### Esempio 1: Vedere i file in una cartella
-Vuoi sapere cosa c'è nella cartella Documenti di Windows?
+### Debug del caricamento .env
+
+Per verificare che il file `.env` venga caricato correttamente, esegui:
 
 ```bash
-./target/release/winboat-bridge -c "dir C:\Users\gianca\Documents"
+./target/release/winboat-bridge --help 2>&1 | grep DEBUG
 ```
 
-#### Esempio 2: Verificare l'indirizzo IP
-Utile per capire se la rete Windows è configurata correttamente.
-
-```bash
-./target/release/winboat-bridge -c "ipconfig"
+Dovresti vedere:
+```
+[DEBUG] Loaded .env from: /path/to/.env
 ```
 
-#### Esempio 3: Lanciare uno script PowerShell
-Se hai uno script complesso, puoi lanciarlo direttamente.
-
-```bash
-./target/release/winboat-bridge -c "powershell -File C:\Scripts\test_build.ps1"
-```
-
-#### Esempio 4: Chiudere la connessione
-Quando hai finito, è buona norma dire al server di chiudersi per liberare risorse.
-
-```bash
-./target/release/winboat-bridge -c "quit"
-```
-
-## Risoluzione Problemi Comuni
-
-### Il comando "si blocca" o non risponde
-Se lanci un comando e il terminale rimane bloccato senza darti risposta:
-1.  Premi `Ctrl + C` per interrompere il client Linux.
-2.  Riprova a lanciare il comando. Il sistema rileverà che la connessione è "morta" e riavvierà automaticamente il server Windows.
-
-### Errore "Connection refused"
-Significa che il server Windows è spento o Docker non ha aperto la porta.
-*   **Soluzione**: Rilancia semplicemente il comando. Il client proverà a fare il "bootstrap" (avvio forzato) del server.
-
-### Modificare la configurazione
-Se cambi i percorsi delle cartelle, devi aggiornare il file `src/main.rs` dove è definito `exe_path` e ricompilare.
+Se vedi `[WARNING] No .env file found`, controlla che:
+1. Il file `.env` esista nella directory corrente, nella directory dell'eseguibile, o nella root del progetto
+2. La sintassi sia corretta (doppi backslash, no virgolette)
+3. Il file abbia i permessi di lettura corretti
