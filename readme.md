@@ -1,5 +1,8 @@
 # WinBoat Bridge [![GitHub stars](https://img.shields.io/github/stars/Giancarlo1974/winboat-bridge.svg?style=social)](https://github.com/Giancarlo1974/winboat-bridge/stargazers)
 
+
+![Windows server running with .env configuration](docs/quickstart-images/header.png)
+
 WinBoat Bridge is an orchestration tool that allows a Linux system to run commands inside a virtualized Windows environment (WinBoat) transparently.
 
 Unlike standard solutions like SSH or WinRM (used only for bootstrap), WinBoat Bridge provides a direct and fast channel, ideal for Continuous Integration (CI) pipelines and test automation.
