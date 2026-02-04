@@ -1,4 +1,4 @@
-# WinBoat Bridge
+# WinBoat Bridge [![GitHub stars](https://img.shields.io/github/stars/Giancarlo1974/winboat-bridge.svg?style=social)](https://github.com/Giancarlo1974/winboat-bridge/stargazers)
 
 WinBoat Bridge is an orchestration tool that allows a Linux system to run commands inside a virtualized Windows environment (WinBoat) transparently.
 Unlike standard solutions like SSH or WinRM (used only for bootstrap), WinBoat Bridge provides a direct and fast channel, ideal for Continuous Integration (CI) pipelines and test automation.
@@ -107,6 +107,14 @@ Run PowerShell script:
 ```bash
 winboat-bridge -c "powershell -File C:\Scripts\Setup-Test.ps1"
 ```
+
+## 6. Support the project (aka "The Star Section" ⭐)
+
+Building tools like this is fun, but seeing stars is better! 
+
+If this tool saved you time or just made your life easier, please **drop a star** on this repository. It costs you $0.00, but it gives me the fuel (and the dopamine) to keep building and sharing more cool stuff for free. 
+
+Go on, click that star. You know you want to! 😉
 
 ## Troubleshooting
 
