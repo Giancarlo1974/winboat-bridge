@@ -7,7 +7,7 @@ WinBoat Bridge is an orchestration tool that allows a Linux system to run comman
 
 Unlike standard solutions like SSH or WinRM (used only for bootstrap), WinBoat Bridge provides a direct and fast channel, ideal for Continuous Integration (CI) pipelines and test automation.
 
-If you are in a hurry and want to skip building from source, check the simple quickstart at https://github.com/Giancarlo1974/winboat-bridge/blob/main/docs/quickstart.md for using the ready-made binaries.
+If you are in a hurry and want to skip building from source, check the simple quickstart at [docs/quickstart.md](docs/quickstart.md) for using the ready-made binaries.
 
 ## 1. Configuration (.env File)
 
